@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Pinch Zoom Test - Interaction Tracker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .container {
+      max-width: 100%;
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    h1 {
+      color: #667eea;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .instructions {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+
+    .instructions h2 {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: #856404;
+    }
+
+    .instructions ol {
+      margin-left: 20px;
+      color: #856404;
+    }
+
+    .instructions li {
+      margin-bottom: 8px;
+    }
+
+    .test-area {
+      margin: 30px 0;
+      padding: 40px;
+      background: linear-gradient(45deg, #f5f5f5 25%, transparent 25%, transparent 75%, #f5f5f5 75%, #f5f5f5),
+                  linear-gradient(45deg, #f5f5f5 25%, transparent 25%, transparent 75%, #f5f5f5 75%, #f5f5f5);
+      background-size: 30px 30px;
+      background-position: 0 0, 15px 15px;
+      border: 3px solid #667eea;
+      border-radius: 12px;
+      text-align: center;
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .test-area h2 {
+      font-size: 32px;
+      color: #667eea;
+      margin-bottom: 20px;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .test-area p {
+      font-size: 18px;
+      color: #666;
+      max-width: 500px;
+      line-height: 1.6;
+    }
+
+    .emoji {
+      font-size: 120px;
+      margin: 20px 0;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    .status {
+      background: #e8f5e9;
+      border: 2px solid #4caf50;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+
+    .status h3 {
+      color: #2e7d32;
+      margin-bottom: 10px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #c8e6c9;
+    }
+
+    .status-item:last-child {
+      border-bottom: none;
+    }
+
+    .status-label {
+      font-weight: 600;
+      color: #555;
+    }
+
+    .status-value {
+      color: #667eea;
+      font-weight: 700;
+      font-family: monospace;
+    }
+
+    .tips {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 4px;
+    }
+
+    .tips h3 {
+      color: #1976d2;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    .tips ul {
+      margin-left: 20px;
+      color: #1565c0;
+    }
+
+    .tips li {
+      margin-bottom: 6px;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+
+      .container {
+        padding: 20px;
+      }
+
+      .test-area {
+        padding: 20px;
+        min-height: 300px;
+      }
+
+      .emoji {
+        font-size: 80px;
+      }
+
+      .test-area h2 {
+        font-size: 24px;
+      }
+
+      .test-area p {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤏 Pinch Zoom Test</h1>
+
+    <div class="instructions">
+      <h2>📱 How to Test on Mobile/Tablet:</h2>
+      <ol>
+        <li><strong>Enable tracking</strong> in the extension popup</li>
+        <li><strong>Place two fingers</strong> on the test area below</li>
+        <li><strong>Pinch in</strong> (bring fingers together) to zoom out</li>
+        <li><strong>Pinch out</strong> (spread fingers apart) to zoom in</li>
+        <li><strong>Check the popup</strong> to see pinch events recorded!</li>
+      </ol>
+    </div>
+
+    <div class="test-area" id="testArea">
+      <div class="emoji">🤏</div>
+      <h2>Pinch Here!</h2>
+      <p>Use two fingers to pinch in or out on this area. The extension will track your pinch-to-zoom gestures.</p>
+    </div>
+
+    <div class="status">
+      <h3>📊 Live Pinch Detection</h3>
+      <div class="status-item">
+        <span class="status-label">Touches Detected:</span>
+        <span class="status-value" id="touchCount">0</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Distance Between Touches:</span>
+        <span class="status-value" id="distance">-</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Last Action:</span>
+        <span class="status-value" id="lastAction">None</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Scale Factor:</span>
+        <span class="status-value" id="scale">-</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Pinch Events Detected:</span>
+        <span class="status-value" id="pinchCount">0</span>
+      </div>
+    </div>
+
+    <div class="tips">
+      <h3>💡 Troubleshooting Tips:</h3>
+      <ul>
+        <li><strong>Not working?</strong> Make sure you're testing on a touch-enabled device (phone, tablet, or touchscreen laptop)</li>
+        <li><strong>Browser zoom interfering?</strong> The extension tracks touch events, not browser zoom</li>
+        <li><strong>Need to simulate?</strong> Chrome DevTools has a device emulation mode (F12 → Toggle device toolbar)</li>
+        <li><strong>Check popup:</strong> Open the extension popup to see recorded pinch events</li>
+        <li><strong>Threshold:</strong> You need at least 5% scale change for detection (improved sensitivity!)</li>
+      </ul>
+    </div>
+
+    <div class="instructions" style="margin-top: 20px; background: #f3e5f5; border-color: #9c27b0;">
+      <h2 style="color: #6a1b9a;">🖥️ Desktop Testing (Chrome DevTools):</h2>
+      <ol style="color: #6a1b9a;">
+        <li>Press <strong>F12</strong> to open DevTools</li>
+        <li>Click <strong>Toggle device toolbar</strong> (or Ctrl+Shift+M)</li>
+        <li>Select a mobile device (e.g., iPhone, iPad)</li>
+        <li>Click the <strong>three dots</strong> → Check "Show pinch zoom"</li>
+        <li>Use <strong>Shift + Mouse drag</strong> to simulate pinch</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    const testArea = document.getElementById('testArea');
+    const touchCountEl = document.getElementById('touchCount');
+    const distanceEl = document.getElementById('distance');
+    const lastActionEl = document.getElementById('lastAction');
+    const scaleEl = document.getElementById('scale');
+    const pinchCountEl = document.getElementById('pinchCount');
+
+    let lastDistance = null;
+    let pinchCount = 0;
+
+    testArea.addEventListener('touchstart', (e) => {
+      touchCountEl.textContent = e.touches.length;
+      lastDistance = null;
+      
+      if (e.touches.length === 2) {
+        const distance = getDistance(e.touches[0], e.touches[1]);
+        distanceEl.textContent = Math.round(distance) + 'px';
+        lastDistance = distance;
+      }
+    });
+
+    testArea.addEventListener('touchmove', (e) => {
+      e.preventDefault(); // Prevent default browser zoom
+      touchCountEl.textContent = e.touches.length;
+      
+      if (e.touches.length === 2) {
+        const distance = getDistance(e.touches[0], e.touches[1]);
+        distanceEl.textContent = Math.round(distance) + 'px';
+        
+        if (lastDistance !== null) {
+          const scale = distance / lastDistance;
+          scaleEl.textContent = scale.toFixed(2);
+          
+          if (Math.abs(scale - 1) > 0.05) {
+            const action = scale > 1 ? 'Zoom In 🔍+' : 'Zoom Out 🔍-';
+            lastActionEl.textContent = action;
+            lastActionEl.style.color = scale > 1 ? '#4caf50' : '#f44336';
+            pinchCount++;
+            pinchCountEl.textContent = pinchCount;
+            lastDistance = distance;
+          }
+        } else {
+          lastDistance = distance;
+        }
+      }
+    });
+
+    testArea.addEventListener('touchend', (e) => {
+      touchCountEl.textContent = e.touches.length;
+      
+      if (e.touches.length < 2) {
+        distanceEl.textContent = '-';
+        scaleEl.textContent = '-';
+        lastDistance = null;
+      }
+    });
+
+    function getDistance(touch1, touch2) {
+      return Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+    }
+
+    // Prevent default zoom behavior
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    document.addEventListener('gesturechange', (e) => e.preventDefault());
+    document.addEventListener('gestureend', (e) => e.preventDefault());
+  </script>
+</body>
+</html>
