@@ -1,12 +1,22 @@
 // Popup Script - Manages the extension UI and user interactions
 
+console.log('🚀 popup.js loaded');
+
 // Initialize API client
-const apiClient = new APIClient();
+let apiClient;
+try {
+  apiClient = new APIClient();
+  console.log('✓ APIClient initialized:', apiClient.baseURL);
+} catch (error) {
+  console.error('✗ Failed to initialize APIClient:', error);
+}
 
 document.addEventListener('DOMContentLoaded', async function() {
+  console.log('📄 DOMContentLoaded event fired');
   
   // Check if user is logged in
   const token = await apiClient.getToken();
+  console.log('🔑 Token status:', token ? 'Found' : 'Not found');
   
   if (!token) {
     showAuthSection();
@@ -36,6 +46,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // Show auth section
 function showAuthSection() {
+  console.log('📝 Showing auth section');
   document.getElementById('authSection').style.display = 'block';
   document.getElementById('consentSection').style.display = 'none';
   document.getElementById('mainContent').style.display = 'none';
@@ -63,20 +74,32 @@ function displayUserInfo(user) {
 
 // Initialize all event listeners
 function initializeEventListeners() {
+  console.log('🎧 Initializing event listeners...');
+  
   // Auth tabs
-  document.getElementById('loginTab')?.addEventListener('click', () => {
+  const loginTab = document.getElementById('loginTab');
+  const registerTab = document.getElementById('registerTab');
+  
+  console.log('Login tab element:', loginTab);
+  console.log('Register tab element:', registerTab);
+  
+  loginTab?.addEventListener('click', () => {
+    console.log('🖱️ Login tab clicked');
     document.getElementById('loginTab').classList.add('active');
     document.getElementById('registerTab').classList.remove('active');
     document.getElementById('loginForm').style.display = 'block';
     document.getElementById('registerForm').style.display = 'none';
   });
   
-  document.getElementById('registerTab')?.addEventListener('click', () => {
+  registerTab?.addEventListener('click', () => {
+    console.log('🖱️ Register tab clicked');
     document.getElementById('registerTab').classList.add('active');
     document.getElementById('loginTab').classList.remove('active');
     document.getElementById('registerForm').style.display = 'block';
     document.getElementById('loginForm').style.display = 'none';
   });
+  
+  console.log('✓ Auth tab listeners attached');
   
   // Auth buttons
   document.getElementById('loginBtn')?.addEventListener('click', handleLogin);

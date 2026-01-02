@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AURA Extension Test</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    .test { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
+    .pass { background: #d4edda; }
+    .fail { background: #f8d7da; }
+  </style>
+</head>
+<body>
+  <h1>AURA Extension Debug Test</h1>
+  
+  <div id="test1" class="test">Test 1: Loading...</div>
+  <div id="test2" class="test">Test 2: Loading...</div>
+  <div id="test3" class="test">Test 3: Loading...</div>
+  <div id="test4" class="test">Test 4: Loading...</div>
+  
+  <script src="config.js"></script>
+  <script src="api-client.js"></script>
+  <script>
+    // Test 1: Check if API_CONFIG loaded
+    const test1 = document.getElementById('test1');
+    if (typeof API_CONFIG !== 'undefined') {
+      test1.textContent = '✓ Test 1: config.js loaded successfully';
+      test1.className = 'test pass';
+    } else {
+      test1.textContent = '✗ Test 1: config.js FAILED to load';
+      test1.className = 'test fail';
+    }
+    
+    // Test 2: Check if APIClient loaded
+    const test2 = document.getElementById('test2');
+    if (typeof APIClient !== 'undefined') {
+      test2.textContent = '✓ Test 2: APIClient class loaded successfully';
+      test2.className = 'test pass';
+    } else {
+      test2.textContent = '✗ Test 2: APIClient FAILED to load';
+      test2.className = 'test fail';
+    }
+    
+    // Test 3: Check if chrome.storage is available
+    const test3 = document.getElementById('test3');
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      test3.textContent = '✓ Test 3: Chrome extension API available';
+      test3.className = 'test pass';
+    } else {
+      test3.textContent = '✗ Test 3: Chrome extension API NOT available';
+      test3.className = 'test fail';
+    }
+    
+    // Test 4: Try to create APIClient instance
+    const test4 = document.getElementById('test4');
+    try {
+      const client = new APIClient();
+      test4.textContent = '✓ Test 4: APIClient instance created: ' + client.baseURL;
+      test4.className = 'test pass';
+    } catch (error) {
+      test4.textContent = '✗ Test 4: Failed to create APIClient: ' + error.message;
+      test4.className = 'test fail';
+    }
+    
+    console.log('All tests completed. Check results above.');
+  </script>
+</body>
+</html>
+
