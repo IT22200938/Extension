@@ -2,7 +2,22 @@
 
 **Unleash the Future of UI**
 
-A comprehensive, privacy-focused browser extension that tracks user interactions across all major browsers (Chrome, Firefox, Safari, and Edge). Built with Manifest V3 for modern browser compatibility and powered by AURA's innovative approach to UI analytics.
+A comprehensive, privacy-focused browser extension with MongoDB integration that tracks user interactions across all major browsers. Built with Manifest V3 and includes secure user authentication, cloud data storage, and real-time analytics.
+
+## 🆕 New Features
+
+### 🔐 User Authentication & Cloud Storage
+- **User Accounts** - Register and login to sync your data
+- **MongoDB Integration** - Secure cloud storage for your interaction data
+- **Cross-Device Sync** - Access your data from any device
+- **Team Analytics** - Share insights across your organization
+- **API Access** - RESTful API for advanced integration
+
+### 📊 Real-Time Analytics
+- Data synced to MongoDB every 30 seconds
+- Historical data retention (30 days)
+- Advanced filtering and search capabilities
+- Export data to CSV for analysis
 
 ## ✨ Features
 
@@ -39,7 +54,47 @@ A comprehensive, privacy-focused browser extension that tracks user interactions
 
 ## 📦 Installation
 
-> **Important:** This extension uses different manifest files for Chrome/Edge vs Firefox due to Manifest V3 implementation differences.
+> **Important:** This extension now requires a backend server for user authentication and data storage.
+
+### Quick Start (Development)
+
+1. **Start the Backend Server** (See [MONGODB_SETUP.md](MONGODB_SETUP.md) for detailed setup)
+   ```bash
+   cd server
+   npm install
+   npm start
+   ```
+
+2. **Load Extension in Chrome**
+   ```bash
+   # Ensure Chrome manifest is active
+   copy manifest-chrome.json manifest.json
+   ```
+   - Open `chrome://extensions/`
+   - Enable "Developer mode"
+   - Click "Load unpacked"
+   - Select the extension directory
+
+3. **Create Account & Start Tracking**
+   - Click the AURA extension icon
+   - Register a new account
+   - Grant consent
+   - Start tracking!
+
+## 🚀 Complete Setup Guide
+
+For detailed setup instructions including:
+- MongoDB configuration (local or Atlas)
+- Backend server deployment
+- Production environment setup
+- API documentation
+- Troubleshooting
+
+**See [MONGODB_SETUP.md](MONGODB_SETUP.md)**
+
+---
+
+## 📖 Quick Setup Guide
 
 ### Chrome / Edge
 
@@ -207,6 +262,22 @@ Click "🔄 Refresh" to update the list.
 
 ```
 aura-interaction-tracker/
+├── server/                 # Backend API server
+│   ├── models/            # MongoDB models
+│   │   ├── User.js
+│   │   ├── Interaction.js
+│   │   └── Stats.js
+│   ├── routes/            # API routes
+│   │   ├── auth.js        # Authentication endpoints
+│   │   ├── interactions.js # Interaction endpoints
+│   │   └── stats.js       # Statistics endpoints
+│   ├── middleware/        # Express middleware
+│   │   └── auth.js        # JWT authentication
+│   ├── server.js          # Main server file
+│   ├── package.json       # Server dependencies
+│   └── .env               # Environment variables
+│
+├── Extension Files:
 ├── manifest.json           # Extension configuration (Manifest V3)
 ├── manifest-chrome.json    # Chrome/Edge specific manifest
 ├── manifest-firefox.json   # Firefox specific manifest
@@ -215,31 +286,47 @@ aura-interaction-tracker/
 ├── popup.html              # Extension popup interface
 ├── popup.js                # Popup logic and UI management
 ├── popup.css               # AURA-branded popup styles
+├── config.js               # API configuration
+├── api-client.js           # API helper functions
 ├── icons/
 │   └── logo.png           # AURA logo (used as extension icon)
+├── MONGODB_SETUP.md       # Complete setup guide
 └── README.md              # This file
 ```
 
 ### Technologies Used
 
+#### Backend
+- **Node.js & Express** - Server framework
+- **MongoDB & Mongoose** - Database and ODM
+- **JWT (jsonwebtoken)** - Authentication
+- **bcryptjs** - Password hashing
+- **CORS** - Cross-origin resource sharing
+
+#### Extension
 - **Manifest V3**: Modern extension format
 - **Vanilla JavaScript**: No external dependencies
-- **Chrome Storage API**: Local data storage
+- **Chrome Storage API**: Local data caching
 - **Service Workers**: Background processing
 - **Content Scripts**: Page interaction tracking
+- **Fetch API**: Backend communication
 
 ### Permissions Explained
 
-- `storage`: Store interaction data locally in browser
+- `storage`: Cache data locally in browser for offline access
 - `activeTab`: Access the currently active tab for tracking
 - `<all_urls>`: Track interactions across all websites
+- `http://localhost:3000/*`: Connect to local development server
+- `https://*.yourdomain.com/*`: Connect to production server
 
 ### Data Storage
 
-- **Storage API**: `chrome.storage.local`
-- **Maximum Storage**: ~1000 interactions (FIFO)
-- **Retention**: 7 days (auto-delete older data)
-- **Size**: Approximately 5-10 MB maximum
+- **Backend Storage**: MongoDB (persistent, searchable)
+- **Local Cache**: Chrome Storage API (temporary, for offline mode)
+- **Sync Interval**: Every 30 seconds (configurable)
+- **Data Retention**: 30 days (auto-deletion)
+- **Maximum Storage**: Unlimited (MongoDB)
+- **Security**: JWT authentication, password hashing, user isolation
 
 ### Performance Considerations
 
