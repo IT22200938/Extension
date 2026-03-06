@@ -139,6 +139,24 @@
           Data is automatically synced to the server and processed securely.
         </p>
       </div>
+
+    </div>
+
+    <div class="section mock-profile-section">
+      <div class="mock-profile-header">
+        <div>
+          <h2>Mock UI Profiles</h2>
+          <p class="mock-profile-copy">
+            Test adaptive UI changes in the demo app without changing the extension's real profile flow.
+          </p>
+        </div>
+        <span id="mockProfileStatus" class="mock-profile-status">Login required</span>
+      </div>
+
+      <div id="mockProfileButtons" class="mock-profile-grid"></div>
+      <p id="mockProfileHint" class="mock-profile-hint">
+        Log in to apply a temporary adaptive override to the active tab.
+      </p>
     </div>
 
     <footer>
@@ -149,6 +167,8 @@
     </footer>
   </div>
 
+  <script src="mock-profiles.js"></script>
+  <script src="popup-mock-profiles.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

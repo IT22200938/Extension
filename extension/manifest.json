@@ -28,7 +28,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "js": ["content.js", "content-mock-profile-bridge.js"],
       "run_at": "document_idle"
     }
   ],
