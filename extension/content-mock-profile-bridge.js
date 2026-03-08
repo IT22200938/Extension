@@ -5,10 +5,10 @@
   'use strict';
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type !== 'AURA_PROFILE_CHANGED') return false;
+    if (message.type !== 'AURA_DEMO_PROFILE_CHANGED') return false;
 
     window.postMessage({
-      type: 'AURA_EXT_PROFILE_CHANGED',
+      type: 'AURA_EXT_DEMO_PROFILE_CHANGED',
       source: 'aura-extension',
       profileId: message.profileId ?? null,
     }, '*');

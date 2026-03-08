@@ -5,8 +5,8 @@
 (function () {
   'use strict';
 
-  const MOCK_PROFILE_STORAGE_KEY = 'AURA_EXT_ACTIVE_MOCK_PROFILE_ID';
-  const ADAPTIVE_PROFILE_STORAGE_KEY = 'AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE';
+  const MOCK_PROFILE_STORAGE_KEY = 'AURA_EXT_DEMO_ACTIVE_MOCK_PROFILE_ID';
+  const ADAPTIVE_PROFILE_STORAGE_KEY = 'AURA_EXT_DEMO_MOCK_PROFILE';
   const REAL_PROFILE_ID = '__real__';
 
   function getPresets() {
@@ -36,7 +36,7 @@
       if (!tabId) return;
 
       chrome.tabs.sendMessage(tabId, {
-        type: 'AURA_PROFILE_CHANGED',
+        type: 'AURA_DEMO_PROFILE_CHANGED',
         profileId,
       }).catch(() => {});
     } catch (error) {
