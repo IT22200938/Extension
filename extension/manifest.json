@@ -17,7 +17,8 @@
     "https://extension-backend-theta.vercel.app/*",
     "https://*.yourdomain.com/*",
     "https://ml-profile.example.com/*",
-    "https://impairment-to-ml.example.com/*"
+    "https://impairment-to-ml.example.com/*",
+    "https://aura-ml-backend-production-bdd3.up.railway.app/*"
   ],
   
   "background": {

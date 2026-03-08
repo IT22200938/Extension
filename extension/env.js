@@ -4,9 +4,9 @@
   // =========================
   // Edit only these base URLs
   // =========================
-  const API_BASE_URL = 'http://localhost:3000/api';
-  const ONBOARDING_GAME_BASE_URL = 'http://localhost:5173';
-  const ML_BASE_URL = 'http://localhost:8000';
+  const API_BASE_URL = "https://extension-backend-theta.vercel.app/api";
+  const ONBOARDING_GAME_BASE_URL = "https://onboarding-frontend-psi.vercel.app";
+  const ML_BASE_URL = "https://aura-ml-backend-production-bdd3.up.railway.app";
 
   const URL_ENV = {
     API_BASE_URL,
@@ -17,4 +17,4 @@
 
   const existing = globalScope.EXTENSION_ENV || {};
   globalScope.EXTENSION_ENV = { ...existing, ...URL_ENV };
-})(typeof globalThis !== 'undefined' ? globalThis : window);
+})(typeof globalThis !== "undefined" ? globalThis : window);
