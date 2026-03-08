@@ -3,36 +3,44 @@
   "name": "AURA Interaction Tracker",
   "version": "1.0.0",
   "description": "Unleash the Future of UI - Track user interactions with advanced analytics and privacy controls",
-  
   "permissions": [
     "storage",
     "activeTab",
     "alarms"
   ],
-  
   "host_permissions": [
     "<all_urls>",
     "http://localhost:3000/*",
     "http://localhost:4000/*",
+    "http://localhost:5000/*",
+    "http://localhost:5173/*",
     "http://localhost:5174/*",
+    "http://localhost:8080/*",
+    "http://localhost:8085/*",
+    "https://extension-backend-theta.vercel.app/*",
+    "https://onboarding-frontend-psi.vercel.app/*",
+    "https://aura-ml-backend-production-bdd3.up.railway.app/*",
+    "https://novacart-kappa.vercel.app/*",
     "https://*.yourdomain.com/*",
     "https://ml-profile.example.com/*",
     "https://impairment-to-ml.example.com/*"
   ],
-  
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "env.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
-  
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -42,7 +50,6 @@
       "128": "icons/logo.png"
     }
   },
-  
   "icons": {
     "16": "icons/logo.png",
     "32": "icons/logo.png",
