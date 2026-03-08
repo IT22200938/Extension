@@ -965,42 +965,6 @@ elementClass: safeClassString(target),
     })();
   });
 
-  // ========== AURA_EXT_DEMO_PROFILE_PING: Return demo mock profile ==========
-  // Ping → PONG with { profile, available }. Isolated from real adaptive/personalized profile storage.
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    if (event.data?.type !== 'AURA_EXT_DEMO_PROFILE_PING') return;
-    if (!isTrustedOrigin(event.origin)) return;
-
-    (async () => {
-      try {
-        const result = await chrome.storage.local.get([
-          'AURA_EXT_DEMO_MOCK_PROFILE',
-          'authToken',
-          'userId',
-        ]);
-        const loggedIn = !!(result.authToken && result.userId);
-        const profile = loggedIn ? (result.AURA_EXT_DEMO_MOCK_PROFILE ?? null) : null;
-        const available = loggedIn && !!profile;
-
-        sendBridgePong(event, {
-          type: 'AURA_EXT_DEMO_PROFILE_PONG',
-          source: 'aura-extension',
-          profile,
-          available,
-        });
-      } catch (err) {
-        sendBridgePong(event, {
-          type: 'AURA_EXT_DEMO_PROFILE_PONG',
-          source: 'aura-extension',
-          profile: null,
-          available: false,
-          error: err.message,
-        });
-      }
-    })();
-  });
-
   // ========== AURA_EXT_ML_FINAL_PROFILE_PING: Adaptive if exists, else personalized ==========
   // Ping → PONG with { profile, source: 'adaptive'|'personalized', available }. Only when user is logged in.
   window.addEventListener('message', (event) => {
