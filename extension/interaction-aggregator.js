@@ -22,11 +22,6 @@
  *     rage_clicks: 0,
  *     zoom_events: 1,
  *     scroll_speed_px_s: 260
- *   },
- *   raw_samples_optional: [],
- *   _profiler: {
- *     sampling_hz: 30,
- *     input_lag_ms_est: 34
  *   }
  * }
  */
@@ -53,8 +48,6 @@ class InteractionAggregator {
     this.keystrokes = [];
     this.mouseDownEvents = [];
     this.lastClickPosition = null;
-    this.samplingStartTime = null;
-    this.samplingEventCount = 0;
     
     // Start automatic window rotation and batch flushing
     this.startWindowTimer();
@@ -95,8 +88,6 @@ class InteractionAggregator {
     this.keystrokes = [];
     this.mouseDownEvents = [];
     this.lastClickPosition = null;
-    this.samplingStartTime = Date.now();
-    this.samplingEventCount = 0;
     
     // Start new window
     this.windowStartTime = Date.now();
@@ -134,8 +125,6 @@ class InteractionAggregator {
     if (!this.windowStartTime) {
       this.startNewWindow();
     }
-
-    this.samplingEventCount++;
 
     const eventType = interactionData.type;
     const timestamp = interactionData.timestamp || Date.now();
@@ -266,10 +255,6 @@ class InteractionAggregator {
       app_type: 'web',
     };
     
-    // Sampling profiler
-    const sampling_hz = this.samplingEventCount / windowDuration;
-    const input_lag_ms_est = this.estimateInputLag();
-    
     // Generate batch ID
     const batch_id = `b_${this.batchIdCounter++}_${Date.now()}`;
     
@@ -286,11 +271,6 @@ class InteractionAggregator {
         rage_clicks,
         zoom_events,
         scroll_speed_px_s: Math.round(scroll_speed_px_s),
-      },
-      raw_samples_optional: [], // Can include raw data if needed for debugging
-      _profiler: {
-        sampling_hz: Math.round(sampling_hz),
-        input_lag_ms_est: Math.round(input_lag_ms_est),
       },
     };
   }
@@ -409,41 +389,6 @@ class InteractionAggregator {
     const duration = (lastScroll.timestamp - firstScroll.timestamp) / 1000; // seconds
     
     return duration > 0 ? distance / duration : 0;
-  }
-
-  /**
-   * Estimate input lag based on event timing patterns
-   */
-  estimateInputLag() {
-    // Simple heuristic: look at mouse_down to click delay
-    if (this.clicks.length === 0 || this.mouseDownEvents.length === 0) return 0;
-    
-    const delays = [];
-    const POSITION_THRESHOLD = 10;
-    
-    for (const click of this.clicks) {
-      const matchingMouseDown = this.mouseDownEvents
-        .filter(md => md.timestamp <= click.timestamp)
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .find(md => {
-          const dx = Math.abs(md.x - click.x);
-          const dy = Math.abs(md.y - click.y);
-          return dx < POSITION_THRESHOLD && dy < POSITION_THRESHOLD;
-        });
-      
-      if (matchingMouseDown) {
-        delays.push(click.timestamp - matchingMouseDown.timestamp);
-      }
-    }
-    
-    // Estimated input lag is the median delay
-    if (delays.length > 0) {
-      delays.sort((a, b) => a - b);
-      const median = delays[Math.floor(delays.length / 2)];
-      return Math.max(0, median - 100); // Subtract typical human reaction time
-    }
-    
-    return 0;
   }
 
   /**

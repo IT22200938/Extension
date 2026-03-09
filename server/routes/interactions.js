@@ -228,9 +228,7 @@ async function resolveAggregatedBatchesUserId(req) {
  *       batch_id: "b_1_1234567890",
  *       captured_at: "2025-10-06T11:25:00Z",
  *       page_context: { domain: "example.com", route: "/checkout", app_type: "web" },
- *       events_agg: { click_count: 24, misclick_rate: 0.08, ... },
- *       raw_samples_optional: [],
- *       _profiler: { sampling_hz: 30, input_lag_ms_est: 34 }
+ *       events_agg: { click_count: 24, misclick_rate: 0.08, ... }
  *     },
  *     ...
  *   ]
@@ -258,14 +256,13 @@ router.post('/aggregated-batches', authMiddleware, async (req, res) => {
     
     // Validate batch structure
     for (const batch of batches) {
-      if (!batch.batch_id || !batch.captured_at || !batch.page_context || !batch.events_agg || !batch._profiler) {
+      if (!batch.batch_id || !batch.captured_at || !batch.page_context || !batch.events_agg) {
         console.error('❌ Invalid batch structure:', batch);
         console.error('Missing fields:', {
           has_batch_id: !!batch.batch_id,
           has_captured_at: !!batch.captured_at,
           has_page_context: !!batch.page_context,
           has_events_agg: !!batch.events_agg,
-          has_profiler: !!batch._profiler,
           batch: JSON.stringify(batch),
         });
         return res.status(400).json({ error: 'Invalid batch structure', missing: {
@@ -273,7 +270,6 @@ router.post('/aggregated-batches', authMiddleware, async (req, res) => {
           captured_at: !batch.captured_at,
           page_context: !batch.page_context,
           events_agg: !batch.events_agg,
-          _profiler: !batch._profiler,
         }});
       }
     }
@@ -296,7 +292,6 @@ router.post('/aggregated-batches', authMiddleware, async (req, res) => {
           captured_at: b.captured_at,
           page_context: b.page_context,
           events_agg: b.events_agg,
-          _profiler: b._profiler,
         })),
       };
       fetch(mlIngestUrl, {

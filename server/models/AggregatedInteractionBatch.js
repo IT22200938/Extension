@@ -59,19 +59,8 @@ const eventsAggSchema = new mongoose.Schema({
   },
 }, { _id: false });
 
-const profilerSchema = new mongoose.Schema({
-  sampling_hz: {
-    type: Number,
-    default: 30,
-  },
-  input_lag_ms_est: {
-    type: Number,
-    default: 0,
-  },
-}, { _id: false });
-
 const aggregatedInteractionBatchSchema = new mongoose.Schema({
-  userId: {
+  user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
@@ -99,24 +88,14 @@ const aggregatedInteractionBatchSchema = new mongoose.Schema({
     type: eventsAggSchema,
     required: true,
   },
-  
-  raw_samples_optional: {
-    type: [mongoose.Schema.Types.Mixed],
-    default: [],
-  },
-  
-  _profiler: {
-    type: profilerSchema,
-    required: true,
-  },
 }, {
   timestamps: true,
   strict: true,
 });
 
 // Indexes for efficient queries
-aggregatedInteractionBatchSchema.index({ userId: 1, captured_at: -1 });
-aggregatedInteractionBatchSchema.index({ userId: 1, 'page_context.domain': 1 });
+aggregatedInteractionBatchSchema.index({ user_id: 1, captured_at: -1 });
+aggregatedInteractionBatchSchema.index({ user_id: 1, 'page_context.domain': 1 });
 aggregatedInteractionBatchSchema.index({ captured_at: 1 });
 
 // TTL: Aggregated data expires after 2 years
@@ -132,13 +111,11 @@ aggregatedInteractionBatchSchema.statics.bulkInsertBatches = async function(user
   
   // Transform batches to match schema
   const documents = batches.map(batch => ({
-    userId,
+    user_id: userId,
     batch_id: batch.batch_id,
     captured_at: new Date(batch.captured_at),
     page_context: batch.page_context,
     events_agg: batch.events_agg,
-    raw_samples_optional: batch.raw_samples_optional || [],
-    _profiler: batch._profiler,
   }));
   
   // Use insertMany for efficient bulk insert (ignore duplicates)
@@ -168,7 +145,7 @@ aggregatedInteractionBatchSchema.statics.getUserBatches = async function(userId,
   const endExclusive = new Date(new Date(endDate).getTime() + 86400000); // start of next day
   
   const query = {
-    userId,
+    user_id: userId,
     captured_at: {
       $gte: start,
       $lt: endExclusive,
@@ -187,7 +164,7 @@ aggregatedInteractionBatchSchema.statics.getUserBatchesLast24h = async function(
   const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const query = {
-    userId,
+    user_id: userId,
     captured_at: {
       $gte: twentyFourHoursAgo,
       $lte: now,
@@ -212,7 +189,7 @@ aggregatedInteractionBatchSchema.statics.getActiveUserIdsLast24h = async functio
     },
   };
 
-  const userIds = await this.distinct('userId', query);
+  const userIds = await this.distinct('user_id', query);
   return userIds.map(id => String(id));
 };
 
@@ -234,11 +211,9 @@ aggregatedInteractionBatchSchema.statics.getUserAggregatedStats = async function
   const totalRageClicks = batches.reduce((sum, b) => sum + b.events_agg.rage_clicks, 0);
   const totalZoomEvents = batches.reduce((sum, b) => sum + b.events_agg.zoom_events, 0);
   const avgScrollSpeed = batches.reduce((sum, b) => sum + b.events_agg.scroll_speed_px_s, 0) / batches.length;
-  const avgSamplingHz = batches.reduce((sum, b) => sum + b._profiler.sampling_hz, 0) / batches.length;
-  const avgInputLag = batches.reduce((sum, b) => sum + b._profiler.input_lag_ms_est, 0) / batches.length;
   
   return {
-    userId,
+    user_id: userId,
     period: { start: startDate, end: endDate },
     batchCount: batches.length,
     totalClicks,
@@ -248,8 +223,6 @@ aggregatedInteractionBatchSchema.statics.getUserAggregatedStats = async function
     totalRageClicks,
     totalZoomEvents,
     avgScrollSpeed: Math.round(avgScrollSpeed),
-    avgSamplingHz: Math.round(avgSamplingHz),
-    avgInputLag: Math.round(avgInputLag),
   };
 };
 
