@@ -395,8 +395,8 @@ router.get('/active-users/last-24h', async (req, res) => {
  * GET /api/interactions/aggregated-batches?start=2025-01-01&end=2025-12-31
  *
  * Integration: If an external component needs a custom date range:
- *   GET /api/interactions/aggregated-batches?start=YYYY-MM-DD&end=YYYY-MM-DD
- *   Headers: Authorization: Bearer <token>
+ *   GET /api/interactions/aggregated-batches?user_id=<id>&start=YYYY-MM-DD&end=YYYY-MM-DD
+ *   (token optional; user_id preferred for service-to-service calls)
  *   Response: { batches: [...], count: N }
  *   For last 24h only, prefer GET /aggregated-batches/last-24h
  */
@@ -427,22 +427,8 @@ router.get('/aggregated-batches', async (req, res) => {
       return res.status(400).json({ error: 'start and end query parameters required' });
     }
 
-    // Existing range mode (authenticated user)
-    let userId;
-    try {
-      const token = req.header('Authorization')?.replace('Bearer ', '');
-      if (!token) {
-        return res.status(401).json({ error: 'Authentication required for date-range query' });
-      }
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.userId).select('_id').lean();
-      if (!user) {
-        return res.status(401).json({ error: 'User not found' });
-      }
-      userId = user._id;
-    } catch (verifyError) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
-    }
+    // Range mode: resolve from user_id query (preferred) or token (fallback)
+    const userId = await resolveAggregatedBatchesUserId(req);
 
     const batches = await AggregatedInteractionBatch.getUserBatches(userId, start, end);
     
