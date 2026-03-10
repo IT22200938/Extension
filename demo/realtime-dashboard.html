@@ -47,9 +47,7 @@
     .status.live { color: #3fb950; }
     .status.error { color: #f85149; }
     .status.paused { color: #8b949e; }
-    .main { padding: 1rem 1.5rem; max-width: 1400px; margin: 0 auto; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
-    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .main { padding: 1rem 1.5rem; max-width: 900px; margin: 0 auto; }
     .panel {
       background: #161b22;
       border: 1px solid #30363d;
@@ -117,35 +115,22 @@
     </div>
   </header>
   <main class="main">
-    <div class="grid">
-      <section class="panel">
-        <div class="panel-header">
-          ML Motor Score → Impairment Profile
-          <span id="mlCount" class="badge">0</span>
-        </div>
-        <div class="panel-body" id="mlPanel">
-          <div class="empty-state">Waiting for ML motor-score calls...</div>
-        </div>
-      </section>
-      <section class="panel">
-        <div class="panel-header">
-          Aggregated Batches Saved
-          <span id="batchCount" class="badge">0</span>
-        </div>
-        <div class="panel-body" id="batchPanel">
-          <div class="empty-state">Waiting for batch sync from extension...</div>
-        </div>
-      </section>
-    </div>
+    <section class="panel">
+      <div class="panel-header">
+        ML Motor Score → Impairment Profile
+        <span id="mlCount" class="badge">0</span>
+      </div>
+      <div class="panel-body" id="mlPanel">
+        <div class="empty-state">Waiting for ML motor-score calls (complete onboarding motor game)...</div>
+      </div>
+    </section>
   </main>
   <script>
     const apiBaseEl = document.getElementById('apiBase');
     const statusEl = document.getElementById('status');
     const autoRefreshEl = document.getElementById('autoRefresh');
     const mlPanel = document.getElementById('mlPanel');
-    const batchPanel = document.getElementById('batchPanel');
     const mlCountEl = document.getElementById('mlCount');
-    const batchCountEl = document.getElementById('batchCount');
 
     function setStatus(cls, text) {
       statusEl.className = 'status ' + cls;
@@ -183,26 +168,6 @@
       }).join('');
     }
 
-    function renderBatches(receipts) {
-      if (!receipts.length) {
-        batchPanel.innerHTML = '<div class="empty-state">Waiting for aggregated batches (login + browse with extension)...</div>';
-        return;
-      }
-      const total = receipts.reduce((s, r) => s + (r.batchCount || 0), 0);
-      batchCountEl.textContent = total;
-      batchPanel.innerHTML = receipts.map(r => {
-        const first = r.batches?.[0];
-        return `
-          <div class="entry">
-            <div class="entry-header">${r.ts} · user ${String(r.userId).slice(-8)}</div>
-            <div><span class="highlight">Batches saved:</span> <span class="score">${r.batchCount || 0}</span></div>
-            ${first ? `<pre>${JSON.stringify(first, null, 2)}</pre>` : ''}
-            ${r.batches?.length > 1 ? `<div class="meta">+ ${r.batches.length - 1} more batch(es)</div>` : ''}
-          </div>
-        `;
-      }).join('');
-    }
-
     async function poll() {
       if (!autoRefreshEl.checked) {
         setStatus('paused', 'Paused');
@@ -210,9 +175,8 @@
       }
       try {
         const feed = await fetchFeed();
-        setStatus('live', 'Live • ' + feed._meta?.updatedAt?.slice(11, 19) || 'OK');
+        setStatus('live', 'Live • ' + (feed._meta?.updatedAt?.slice(11, 19) || 'OK'));
         renderML(feed.mlResponses || []);
-        renderBatches(feed.batchReceipts || []);
       } catch (err) {
         setStatus('error', err.message || 'Fetch failed');
       }
