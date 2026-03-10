@@ -17,9 +17,12 @@ function addMLResponse({ userId, mlResponse, impairmentSnapshot }) {
   if (mlResponses.length > MAX_ML_ENTRIES) mlResponses.pop();
 }
 
-function getFeed() {
+function getFeed(userId) {
+  const filtered = userId
+    ? mlResponses.filter(r => String(r.userId) === String(userId))
+    : mlResponses;
   return {
-    mlResponses: [...mlResponses],
+    mlResponses: filtered,
     _meta: { updatedAt: new Date().toISOString() },
   };
 }

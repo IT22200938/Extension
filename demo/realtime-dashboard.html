@@ -110,6 +110,7 @@
     <h1>🔄 AURA Real-Time Demo Dashboard</h1>
     <div class="controls">
       <input type="url" id="apiBase" class="api-url" placeholder="https://mlpe.auraui.org/api" value="https://mlpe.auraui.org/api">
+      <input type="password" id="authToken" class="api-url" placeholder="Auth token (from extension)" style="width: 200px;" title="Paste auth token from extension storage to show your data">
       <span id="status" class="status">Connecting...</span>
       <label><input type="checkbox" id="autoRefresh" checked> Auto-refresh</label>
     </div>
@@ -117,16 +118,17 @@
   <main class="main">
     <section class="panel">
       <div class="panel-header">
-        ML Motor Score → Impairment Profile
+        ML Response → Final Impairment Profile
         <span id="mlCount" class="badge">0</span>
       </div>
       <div class="panel-body" id="mlPanel">
-        <div class="empty-state">Waiting for ML motor-score calls (complete onboarding motor game)...</div>
+        <div class="empty-state">Paste your auth token above, then complete the motor game. Your ML response and final impairment profile will appear here.</div>
       </div>
     </section>
   </main>
   <script>
     const apiBaseEl = document.getElementById('apiBase');
+    const authTokenEl = document.getElementById('authToken');
     const statusEl = document.getElementById('status');
     const autoRefreshEl = document.getElementById('autoRefresh');
     const mlPanel = document.getElementById('mlPanel');
@@ -139,33 +141,36 @@
 
     async function fetchFeed() {
       const base = apiBaseEl.value.replace(/\/$/, '');
-      const url = base + '/demo/feed';
-      const res = await fetch(url);
+      const token = authTokenEl.value.trim();
+      if (!token) return null;
+      const res = await fetch(base + '/demo/feed', {
+        headers: { 'Authorization': 'Bearer ' + token },
+      });
       if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
       return res.json();
     }
 
     function renderML(responses) {
       if (!responses.length) {
-        mlPanel.innerHTML = '<div class="empty-state">Waiting for ML motor-score calls (complete onboarding motor game)...</div>';
+        const hasToken = authTokenEl.value.trim();
+        mlPanel.innerHTML = hasToken
+          ? '<div class="empty-state">Complete the onboarding motor game. Your ML response and final impairment profile will appear here.</div>'
+          : '<div class="empty-state">Paste your auth token above, then complete the motor game.</div>';
+        mlCountEl.textContent = '0';
         return;
       }
       mlCountEl.textContent = responses.length;
-      mlPanel.innerHTML = responses.map(r => {
-        const mp = r.mlResponse?.motor_profile || {};
-        const imp = r.impairmentSnapshot || {};
-        const score = mp.impairment_score ?? imp.motor_impairment ?? '—';
-        const reaction = r.mlResponse?.reaction_analysis;
-        return `
-          <div class="entry">
-            <div class="entry-header">${r.ts} · user ${String(r.userId).slice(-8)}</div>
-            <div><span class="highlight">Impairment score:</span> <span class="score">${score}</span></div>
-            ${reaction ? `<div>Reaction delay: ${reaction.delayed_reaction_ms ?? '—'} ms</div>` : ''}
-            <pre>${JSON.stringify(r.mlResponse, null, 2)}</pre>
-            <div class="meta">Impairment snapshot saved: ${JSON.stringify(imp)}</div>
-          </div>
-        `;
-      }).join('');
+      const r = responses[0];
+      const imp = r.impairmentSnapshot || {};
+      mlPanel.innerHTML = `
+        <div class="entry">
+          <div class="entry-header">${r.ts}</div>
+          <div><span class="highlight">ML Response</span></div>
+          <pre>${JSON.stringify(r.mlResponse, null, 2)}</pre>
+          <div class="meta" style="margin-top: 1rem;"><span class="highlight">Final impairment profile</span> (saved)</div>
+          <pre>${JSON.stringify(imp, null, 2)}</pre>
+        </div>
+      `;
     }
 
     async function poll() {
@@ -173,8 +178,14 @@
         setStatus('paused', 'Paused');
         return;
       }
+      if (!authTokenEl.value.trim()) {
+        setStatus('paused', 'Add token');
+        renderML([]);
+        return;
+      }
       try {
         const feed = await fetchFeed();
+        if (!feed) return;
         setStatus('live', 'Live • ' + (feed._meta?.updatedAt?.slice(11, 19) || 'OK'));
         renderML(feed.mlResponses || []);
       } catch (err) {
@@ -186,6 +197,8 @@
       if (autoRefreshEl.checked) poll();
     });
     apiBaseEl.addEventListener('change', poll);
+    authTokenEl.addEventListener('input', poll);
+    authTokenEl.addEventListener('change', poll);
 
     setInterval(poll, 2500);
     poll();
