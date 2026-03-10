@@ -7,6 +7,7 @@ const Stats = require('../models/Stats');
 const AggregatedInteractionBatch = require('../models/AggregatedInteractionBatch');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/auth');
+const demoFeedStore = require('../utils/demoFeedStore');
 
 // Save interactions (batch)
 router.post('/batch', authMiddleware, async (req, res) => {
@@ -285,7 +286,13 @@ router.post('/aggregated-batches', authMiddleware, async (req, res) => {
     
     const count = result.length || result.insertedCount || batches.length;
     console.log(`✅ Successfully saved ${count} aggregated batches to MongoDB`);
-    
+
+    demoFeedStore.addBatchReceipt({
+      userId: req.userId,
+      batchCount: count,
+      batches: batches,
+    });
+
     // ML Engine integration: forward batches to external ML service (different codebase)
     const mlIngestUrl = process.env.ML_ENGINE_INGEST_URL;
     if (mlIngestUrl && batches.length > 0 && typeof fetch === 'function') {

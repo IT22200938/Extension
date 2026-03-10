@@ -4,6 +4,7 @@ const authMiddleware = require('../middleware/auth');
 const OnboardingSession = require('../models/OnboardingSession');
 const OnboardingMotorResult = require('../models/OnboardingMotorResult');
 const ImpairmentProfile = require('../models/ImpairmentProfile');
+const demoFeedStore = require('../utils/demoFeedStore');
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000/score/motor';
 
@@ -346,7 +347,7 @@ router.post('/motor-score', authMiddleware, async (req, res) => {
       device_context: buildDeviceContext(session, payload),
     };
 
-    await ImpairmentProfile.findOneAndUpdate(
+    const updated = await ImpairmentProfile.findOneAndUpdate(
       { user_id: String(req.userId) },
       {
         $set: {
@@ -356,6 +357,12 @@ router.post('/motor-score', authMiddleware, async (req, res) => {
       },
       { upsert: true, new: true }
     );
+
+    demoFeedStore.addMLResponse({
+      userId: req.userId,
+      mlResponse: result,
+      impairmentSnapshot: updated?.impairment_probs?.motor || motorImpairment,
+    });
 
     return res.json(result);
   } catch (error) {

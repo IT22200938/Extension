@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AURA Real-Time Demo Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1419;
+      color: #e6edf3;
+      min-height: 100vh;
+    }
+    .header {
+      padding: 1rem 1.5rem;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .header h1 { margin: 0; font-size: 1.25rem; }
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .api-url {
+      width: 280px;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #0d1117;
+      color: #e6edf3;
+      font-size: 0.875rem;
+    }
+    .status {
+      font-size: 0.8rem;
+      padding: 0.35rem 0.6rem;
+      border-radius: 6px;
+      background: #21262d;
+    }
+    .status.live { color: #3fb950; }
+    .status.error { color: #f85149; }
+    .status.paused { color: #8b949e; }
+    .main { padding: 1rem 1.5rem; max-width: 1400px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .panel {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 0.75rem 1rem;
+      background: #21262d;
+      font-weight: 600;
+      font-size: 0.95rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-header .badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      background: #30363d;
+      border-radius: 4px;
+    }
+    .panel-body {
+      padding: 1rem;
+      max-height: 420px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+    }
+    .entry {
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+    }
+    .entry:last-child { margin-bottom: 0; }
+    .entry-header {
+      font-size: 0.75rem;
+      color: #8b949e;
+      margin-bottom: 0.5rem;
+    }
+    .entry pre {
+      margin: 0;
+      font-size: 0.75rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .entry .highlight { color: #58a6ff; }
+    .entry .score { color: #3fb950; font-weight: 600; }
+    .empty-state {
+      color: #8b949e;
+      text-align: center;
+      padding: 2rem 1rem;
+    }
+    .meta { font-size: 0.7rem; color: #6e7681; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>🔄 AURA Real-Time Demo Dashboard</h1>
+    <div class="controls">
+      <input type="url" id="apiBase" class="api-url" placeholder="https://mlpe.auraui.org/api" value="https://mlpe.auraui.org/api">
+      <span id="status" class="status">Connecting...</span>
+      <label><input type="checkbox" id="autoRefresh" checked> Auto-refresh</label>
+    </div>
+  </header>
+  <main class="main">
+    <div class="grid">
+      <section class="panel">
+        <div class="panel-header">
+          ML Motor Score → Impairment Profile
+          <span id="mlCount" class="badge">0</span>
+        </div>
+        <div class="panel-body" id="mlPanel">
+          <div class="empty-state">Waiting for ML motor-score calls...</div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          Aggregated Batches Saved
+          <span id="batchCount" class="badge">0</span>
+        </div>
+        <div class="panel-body" id="batchPanel">
+          <div class="empty-state">Waiting for batch sync from extension...</div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const apiBaseEl = document.getElementById('apiBase');
+    const statusEl = document.getElementById('status');
+    const autoRefreshEl = document.getElementById('autoRefresh');
+    const mlPanel = document.getElementById('mlPanel');
+    const batchPanel = document.getElementById('batchPanel');
+    const mlCountEl = document.getElementById('mlCount');
+    const batchCountEl = document.getElementById('batchCount');
+
+    function setStatus(cls, text) {
+      statusEl.className = 'status ' + cls;
+      statusEl.textContent = text;
+    }
+
+    async function fetchFeed() {
+      const base = apiBaseEl.value.replace(/\/$/, '');
+      const url = base + '/demo/feed';
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      return res.json();
+    }
+
+    function renderML(responses) {
+      if (!responses.length) {
+        mlPanel.innerHTML = '<div class="empty-state">Waiting for ML motor-score calls (complete onboarding motor game)...</div>';
+        return;
+      }
+      mlCountEl.textContent = responses.length;
+      mlPanel.innerHTML = responses.map(r => {
+        const mp = r.mlResponse?.motor_profile || {};
+        const imp = r.impairmentSnapshot || {};
+        const score = mp.impairment_score ?? imp.motor_impairment ?? '—';
+        const reaction = r.mlResponse?.reaction_analysis;
+        return `
+          <div class="entry">
+            <div class="entry-header">${r.ts} · user ${String(r.userId).slice(-8)}</div>
+            <div><span class="highlight">Impairment score:</span> <span class="score">${score}</span></div>
+            ${reaction ? `<div>Reaction delay: ${reaction.delayed_reaction_ms ?? '—'} ms</div>` : ''}
+            <pre>${JSON.stringify(r.mlResponse, null, 2)}</pre>
+            <div class="meta">Impairment snapshot saved: ${JSON.stringify(imp)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderBatches(receipts) {
+      if (!receipts.length) {
+        batchPanel.innerHTML = '<div class="empty-state">Waiting for aggregated batches (login + browse with extension)...</div>';
+        return;
+      }
+      const total = receipts.reduce((s, r) => s + (r.batchCount || 0), 0);
+      batchCountEl.textContent = total;
+      batchPanel.innerHTML = receipts.map(r => {
+        const first = r.batches?.[0];
+        return `
+          <div class="entry">
+            <div class="entry-header">${r.ts} · user ${String(r.userId).slice(-8)}</div>
+            <div><span class="highlight">Batches saved:</span> <span class="score">${r.batchCount || 0}</span></div>
+            ${first ? `<pre>${JSON.stringify(first, null, 2)}</pre>` : ''}
+            ${r.batches?.length > 1 ? `<div class="meta">+ ${r.batches.length - 1} more batch(es)</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function poll() {
+      if (!autoRefreshEl.checked) {
+        setStatus('paused', 'Paused');
+        return;
+      }
+      try {
+        const feed = await fetchFeed();
+        setStatus('live', 'Live • ' + feed._meta?.updatedAt?.slice(11, 19) || 'OK');
+        renderML(feed.mlResponses || []);
+        renderBatches(feed.batchReceipts || []);
+      } catch (err) {
+        setStatus('error', err.message || 'Fetch failed');
+      }
+    }
+
+    autoRefreshEl.addEventListener('change', () => {
+      if (autoRefreshEl.checked) poll();
+    });
+    apiBaseEl.addEventListener('change', poll);
+
+    setInterval(poll, 2500);
+    poll();
+  </script>
+</body>
+</html>

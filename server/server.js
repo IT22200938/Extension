@@ -7,6 +7,7 @@ const interactionRoutes = require('./routes/interactions');
 const statsRoutes = require('./routes/stats');
 const onboardingRoutes = require('./routes/onboarding');
 const mlRoutes = require('./routes/ml');
+const demoRoutes = require('./routes/demo');
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use('/api/interactions', interactionRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/ml', mlRoutes);
+app.use('/api/demo', demoRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
