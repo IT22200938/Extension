@@ -579,6 +579,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'CLEAR_ADAPTIVE_PROFILE_REQUEST') {
+    chrome.storage.local.get(['authToken', 'userId']).then((result) => {
+      const hasAuth = !!(result.authToken && result.userId &&
+        String(result.authToken).trim() !== '' &&
+        String(result.userId).trim() !== '');
+      if (!hasAuth) {
+        sendResponse({ success: false, error: 'User must be logged in' });
+        return;
+      }
+
+      chrome.storage.local.remove(['AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE'])
+        .then(() => {
+          broadcastToAllTabs({
+            type: 'AURA_EXT_PROFILE_CHANGED',
+            profile: null,
+            source: message.source || 'adaptive-clear'
+          });
+          sendResponse({ success: true });
+        })
+        .catch((err) => sendResponse({ success: false, error: err?.message || 'Storage removal failed' }));
+    });
+    return true;
+  }
+
   return false;
 });
 
@@ -675,4 +699,3 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
 
 
 // Sync when browser is about to suspend – aggregated batches handled by interaction-aggregator
-

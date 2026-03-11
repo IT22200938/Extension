@@ -16,6 +16,346 @@ const REGISTRATION_FLOW_STAGES = {
   CONSENT_PENDING: 'consent_pending',
   ONBOARDING_PENDING: 'onboarding_pending',
 };
+const PERSONALIZED_PROFILE_KEY = 'AURA_EXT_ML_PERSONALIZED_PROFILE';
+const ADAPTIVE_PROFILE_KEY = 'AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE';
+const DEMO_PROFILE_META_KEY = 'AURA_EXT_DEMO_PRESET_META';
+const DEMO_PROFILE_BACKUP_KEY = 'AURA_EXT_DEMO_PRESET_BACKUP';
+
+const DEMO_PROFILE_PRESETS = [
+  {
+    id: 'u_normal',
+    label: 'Normal User',
+    origin: 'user',
+    confidence: 0.82,
+    version: 1,
+    profile: {
+      font_size: 12,
+      line_height: 1.15,
+      contrast_mode: 'normal',
+      primary_color: '#2563eb',
+      primary_color_content: '#ffffff',
+      secondary_color: '#0ea5e9',
+      secondary_color_content: '#ffffff',
+      accent_color: '#f97316',
+      accent_color_content: '#111111',
+      theme: 'light',
+      element_spacing_x: 10,
+      element_spacing_y: 10,
+      element_padding_x: 12,
+      element_padding_y: 10,
+      reduced_motion: false,
+      target_size: 14,
+      tooltip_assist: false,
+      layout_simplification: false,
+    },
+  },
+  {
+    id: 'u_vision',
+    label: 'Visual Impaired',
+    origin: 'user',
+    confidence: 0.9,
+    version: 1,
+    profile: {
+      font_size: 20,
+      line_height: 1.7,
+      contrast_mode: 'high',
+      primary_color: '#000000',
+      primary_color_content: '#ffffff',
+      secondary_color: '#1f2937',
+      secondary_color_content: '#ffffff',
+      accent_color: '#facc15',
+      accent_color_content: '#111111',
+      theme: 'light',
+      element_spacing_x: 14,
+      element_spacing_y: 14,
+      element_padding_x: 16,
+      element_padding_y: 14,
+      reduced_motion: true,
+      target_size: 32,
+      tooltip_assist: true,
+      layout_simplification: false,
+    },
+  },
+  {
+    id: 'u_motor',
+    label: 'Motor Support',
+    origin: 'user',
+    confidence: 0.88,
+    version: 1,
+    profile: {
+      font_size: 18,
+      line_height: 1.6,
+      contrast_mode: 'high',
+      primary_color: '#2563eb',
+      primary_color_content: '#ffffff',
+      secondary_color: '#0ea5e9',
+      secondary_color_content: '#ffffff',
+      accent_color: '#22c55e',
+      accent_color_content: '#052e16',
+      theme: 'dark',
+      element_spacing_x: 18,
+      element_spacing_y: 18,
+      element_padding_x: 20,
+      element_padding_y: 18,
+      reduced_motion: true,
+      target_size: 44,
+      tooltip_assist: false,
+      layout_simplification: false,
+    },
+  },
+  {
+    id: 'u_lowlit',
+    label: 'Low Literacy',
+    origin: 'user',
+    confidence: 0.86,
+    version: 1,
+    profile: {
+      font_size: 18,
+      line_height: 1.6,
+      contrast_mode: 'normal',
+      primary_color: '#2563eb',
+      primary_color_content: '#ffffff',
+      secondary_color: '#64748b',
+      secondary_color_content: '#ffffff',
+      accent_color: '#f97316',
+      accent_color_content: '#111111',
+      theme: 'light',
+      element_spacing_x: 16,
+      element_spacing_y: 16,
+      element_padding_x: 18,
+      element_padding_y: 16,
+      reduced_motion: true,
+      target_size: 36,
+      tooltip_assist: true,
+      layout_simplification: true,
+    },
+  },
+];
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function getDemoPresetById(presetId) {
+  return DEMO_PROFILE_PRESETS.find((preset) => preset.id === presetId) || null;
+}
+
+function buildStoredProfileFromPreset(activeUserId, preset) {
+  const profile = { ...preset.profile };
+
+  return {
+    user_id: activeUserId || preset.id,
+    metadata: {
+      origin: preset.origin,
+      created_at: nowIso(),
+      confidence_overall: preset.confidence,
+      version: preset.version,
+      demo_preset_id: preset.id,
+      demo_preset_label: preset.label,
+    },
+    profile,
+    profile_changes: {
+      changed: Object.keys(profile),
+      old: null,
+      new: { ...profile },
+    },
+  };
+}
+
+function formatProfileSnapshot(profileValue, emptyMessage) {
+  if (!profileValue) return emptyMessage;
+  return JSON.stringify(profileValue, null, 2);
+}
+
+function setDemoControlsBusy(isBusy) {
+  document.querySelectorAll('[data-demo-profile-btn]').forEach((button) => {
+    button.disabled = isBusy;
+  });
+  const resetBtn = document.getElementById('resetDemoProfileBtn');
+  const refreshBtn = document.getElementById('refreshDemoProfileBtn');
+  if (resetBtn) resetBtn.disabled = isBusy || resetBtn.dataset.enabled !== 'true';
+  if (refreshBtn) refreshBtn.disabled = isBusy;
+}
+
+function renderDemoProfileButtons() {
+  const root = document.getElementById('demoProfileButtons');
+  if (!root) return;
+
+  root.innerHTML = '';
+
+  DEMO_PROFILE_PRESETS.forEach((preset) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-demo-preset';
+    button.dataset.demoProfileBtn = preset.id;
+    button.textContent = preset.label;
+    button.addEventListener('click', () => {
+      applyDemoPreset(preset.id);
+    });
+    root.appendChild(button);
+  });
+}
+
+async function ensureDemoProfileBackup() {
+  const result = await chrome.storage.local.get([DEMO_PROFILE_BACKUP_KEY, ADAPTIVE_PROFILE_KEY]);
+  if (result[DEMO_PROFILE_BACKUP_KEY]) return result[DEMO_PROFILE_BACKUP_KEY];
+
+  const adaptiveProfile = result[ADAPTIVE_PROFILE_KEY] ?? null;
+  const backup = {
+    hasAdaptiveProfile: !!adaptiveProfile,
+    profile: adaptiveProfile,
+    capturedAt: nowIso(),
+  };
+
+  await chrome.storage.local.set({ [DEMO_PROFILE_BACKUP_KEY]: backup });
+  return backup;
+}
+
+async function applyDemoPreset(presetId) {
+  const preset = getDemoPresetById(presetId);
+  if (!preset) {
+    showNotification('Unknown demo preset.', 'error');
+    return;
+  }
+
+  setDemoControlsBusy(true);
+
+  try {
+    const { userId } = await chrome.storage.local.get(['userId']);
+    if (!userId) {
+      throw new Error('Login required before applying demo profiles.');
+    }
+
+    await ensureDemoProfileBackup();
+
+    const response = await chrome.runtime.sendMessage({
+      type: 'SET_ADAPTIVE_PROFILE_REQUEST',
+      source: 'popup-demo-preset',
+      profile: buildStoredProfileFromPreset(userId, preset),
+    });
+
+    if (!response?.success) {
+      throw new Error(response?.error || 'Could not store demo profile override.');
+    }
+
+    await chrome.storage.local.set({
+      [DEMO_PROFILE_META_KEY]: {
+        presetId: preset.id,
+        label: preset.label,
+        appliedAt: nowIso(),
+      },
+    });
+
+    await refreshDemoProfilePanel();
+    showNotification(`${preset.label} override applied.`, 'success');
+  } catch (error) {
+    console.error('Failed to apply demo preset:', error);
+    showNotification(error.message || 'Failed to apply demo preset.', 'error');
+  } finally {
+    setDemoControlsBusy(false);
+  }
+}
+
+async function resetDemoProfileOverride() {
+  setDemoControlsBusy(true);
+
+  try {
+    const result = await chrome.storage.local.get([DEMO_PROFILE_META_KEY, DEMO_PROFILE_BACKUP_KEY]);
+    const meta = result[DEMO_PROFILE_META_KEY] || null;
+    const backup = result[DEMO_PROFILE_BACKUP_KEY] || null;
+
+    if (!meta && !backup) {
+      await refreshDemoProfilePanel();
+      showNotification('Real extension profile is already active.', 'info');
+      return;
+    }
+
+    let response;
+    if (backup?.hasAdaptiveProfile && backup.profile) {
+      response = await chrome.runtime.sendMessage({
+        type: 'SET_ADAPTIVE_PROFILE_REQUEST',
+        source: 'popup-demo-restore',
+        profile: backup.profile,
+      });
+    } else {
+      response = await chrome.runtime.sendMessage({
+        type: 'CLEAR_ADAPTIVE_PROFILE_REQUEST',
+        source: 'popup-demo-restore',
+      });
+    }
+
+    if (!response?.success) {
+      throw new Error(response?.error || 'Could not restore the real extension profile.');
+    }
+
+    await chrome.storage.local.remove([DEMO_PROFILE_META_KEY, DEMO_PROFILE_BACKUP_KEY]);
+    await refreshDemoProfilePanel();
+    showNotification('Real extension profile restored.', 'success');
+  } catch (error) {
+    console.error('Failed to reset demo profile override:', error);
+    showNotification(error.message || 'Failed to restore real extension profile.', 'error');
+  } finally {
+    setDemoControlsBusy(false);
+  }
+}
+
+async function refreshDemoProfilePanel() {
+  const realProfileNode = document.getElementById('realProfileSnapshot');
+  const finalProfileNode = document.getElementById('finalProfileSnapshot');
+  const finalSourceNode = document.getElementById('finalProfileSource');
+  const realSourceNode = document.getElementById('realProfileSource');
+  const statusNode = document.getElementById('demoProfileStatus');
+  const badgeNode = document.getElementById('demoProfileModeBadge');
+  const resetBtn = document.getElementById('resetDemoProfileBtn');
+
+  if (!realProfileNode || !finalProfileNode || !finalSourceNode || !realSourceNode || !statusNode || !badgeNode || !resetBtn) {
+    return;
+  }
+
+  const result = await chrome.storage.local.get([
+    PERSONALIZED_PROFILE_KEY,
+    ADAPTIVE_PROFILE_KEY,
+    DEMO_PROFILE_META_KEY,
+  ]);
+
+  const personalized = result[PERSONALIZED_PROFILE_KEY] ?? null;
+  const adaptive = result[ADAPTIVE_PROFILE_KEY] ?? null;
+  const demoMeta = result[DEMO_PROFILE_META_KEY] ?? null;
+  const finalProfile = adaptive || personalized || null;
+
+  document.querySelectorAll('[data-demo-profile-btn]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.demoProfileBtn === demoMeta?.presetId);
+  });
+
+  if (demoMeta?.label && adaptive) {
+    badgeNode.textContent = `Demo override: ${demoMeta.label}`;
+    statusNode.textContent = `${demoMeta.label} is overriding the real extension profile. Pages using the npm package will read this as the final effective profile until you restore the real path.`;
+    resetBtn.dataset.enabled = 'true';
+  } else if (adaptive) {
+    badgeNode.textContent = 'Adaptive profile';
+    statusNode.textContent = 'A real adaptive profile is active in extension storage. The demo reset action stays disabled unless this popup applied a demo override.';
+    resetBtn.dataset.enabled = 'false';
+  } else {
+    badgeNode.textContent = 'Real profile';
+    statusNode.textContent = 'Adaptive override is not active. The app will use the stored real extension profile.';
+    resetBtn.dataset.enabled = demoMeta ? 'true' : 'false';
+  }
+
+  resetBtn.disabled = resetBtn.dataset.enabled !== 'true';
+  realSourceNode.textContent = personalized?.metadata?.origin || 'not available';
+  finalSourceNode.textContent = adaptive
+    ? (demoMeta?.label ? 'adaptive demo' : 'adaptive')
+    : (personalized?.metadata?.origin || 'not available');
+
+  realProfileNode.textContent = formatProfileSnapshot(
+    personalized,
+    'No personalized profile is stored yet in the real extension.'
+  );
+  finalProfileNode.textContent = formatProfileSnapshot(
+    finalProfile,
+    'No final profile is available yet. Complete onboarding or fetch the personalized profile first.'
+  );
+}
 
 async function getRegistrationFlowState() {
   const result = await chrome.storage.local.get([REGISTRATION_FLOW_STATE_KEY]);
@@ -406,8 +746,15 @@ function initializeEventListeners() {
   
   // Consent button
   document.getElementById('acceptConsent')?.addEventListener('click', handleAcceptConsent);
-  
-  
+
+  renderDemoProfileButtons();
+  document.getElementById('resetDemoProfileBtn')?.addEventListener('click', resetDemoProfileOverride);
+  document.getElementById('refreshDemoProfileBtn')?.addEventListener('click', () => {
+    refreshDemoProfilePanel().catch((error) => {
+      console.error('Failed to refresh demo profile panel:', error);
+      showNotification('Could not refresh profile snapshot.', 'error');
+    });
+  });
 }
 
 // Manual test function (accessible from console)
@@ -675,6 +1022,7 @@ async function handleAcceptConsent() {
       if (userData?.user) {
         displayUserInfo(userData.user);
       }
+      await loadData();
       showNotification('Tracking enabled!', 'success');
     } else {
       // Show onboarding prompt
@@ -710,6 +1058,7 @@ async function handleAcceptConsent() {
 async function loadData() {
   // Nothing to load - tracking is always active
   console.log('✅ Tracking active');
+  await refreshDemoProfilePanel();
 }
 
 
@@ -756,5 +1105,3 @@ style.textContent = `
   }
 `;
 document.head.appendChild(style);
-
-

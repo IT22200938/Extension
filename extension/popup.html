@@ -146,6 +146,47 @@
           Data is automatically synced to the server and processed securely.
         </p>
       </div>
+
+      <div class="section demo-profile-section" id="demoProfileSection">
+        <div class="demo-profile-header">
+          <div>
+            <h2>Demo Profile Overrides</h2>
+            <p class="demo-profile-copy">
+              Apply isolated preset overrides through the real extension without changing the npm package.
+            </p>
+          </div>
+          <span class="demo-profile-badge" id="demoProfileModeBadge">Real profile</span>
+        </div>
+
+        <div class="demo-profile-actions" id="demoProfileButtons"></div>
+
+        <div class="demo-profile-toolbar">
+          <button id="resetDemoProfileBtn" class="btn btn-secondary btn-small" type="button">Use Real Profile</button>
+          <button id="refreshDemoProfileBtn" class="btn btn-secondary btn-small" type="button">Refresh Snapshot</button>
+        </div>
+
+        <p class="demo-profile-status" id="demoProfileStatus">
+          Adaptive override is not active. The app will use the stored real extension profile.
+        </p>
+
+        <div class="demo-profile-snapshots">
+          <div class="profile-card">
+            <div class="profile-card-header">
+              <h3>Real Personalized Profile</h3>
+              <span class="profile-source" id="realProfileSource">personalized</span>
+            </div>
+            <pre id="realProfileSnapshot" class="profile-json">Loading...</pre>
+          </div>
+
+          <div class="profile-card">
+            <div class="profile-card-header">
+              <h3>Final Effective Profile</h3>
+              <span class="profile-source" id="finalProfileSource">final</span>
+            </div>
+            <pre id="finalProfileSnapshot" class="profile-json">Loading...</pre>
+          </div>
+        </div>
+      </div>
     </div>
 
     <footer>
@@ -159,4 +200,3 @@
   <script src="popup.js"></script>
 </body>
 </html>
-
