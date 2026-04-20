@@ -3,6 +3,9 @@ const EXTENSION_ENV = (typeof globalThis !== 'undefined' && globalThis.EXTENSION
 
 const API_CONFIG = {
   BASE_URL: EXTENSION_ENV.API_BASE_URL || 'http://localhost:3000/api',
+  BRIDGE_ACCESS_TOKEN_URL:
+    EXTENSION_ENV.BRIDGE_ACCESS_TOKEN_URL ||
+    `${EXTENSION_ENV.API_BASE_URL || 'http://localhost:3000/api'}/auth/bridge-access-token`,
   // Change this to your production URL when deploying
   // BASE_URL: 'https://your-server.com/api',
   
@@ -20,6 +23,7 @@ const API_CONFIG = {
     LOGIN: '/auth/login',
     LOGOUT: '/auth/logout',
     ME: '/auth/me',
+    BRIDGE_ACCESS_TOKEN: '/auth/bridge-access-token',
     UPDATE_SETTINGS: '/auth/settings',
     GET_STATS: '/stats',
     ONBOARDING_STATUS: '/onboarding/status',

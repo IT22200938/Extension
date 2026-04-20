@@ -17,6 +17,7 @@ export const API_CONFIG = {
     LOGIN: '/auth/login',
     LOGOUT: '/auth/logout',
     ME: '/auth/me',
+    BRIDGE_ACCESS_TOKEN: '/auth/bridge-access-token',
     UPDATE_SETTINGS: '/auth/settings',
     GET_STATS: '/stats',
     ONBOARDING_STATUS: '/onboarding/status',
@@ -61,6 +62,10 @@ export const API_CONFIG = {
   // Compares AURA_EXT_ML_PERSONALIZED_PROFILE (base) vs AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE (current)
   // and POSTs the changes so the ML engine can learn from user feedback.
   ML_SESSION_FEEDBACK_URL: EXTENSION_ENV.ML_SESSION_FEEDBACK_URL || 'http://localhost:8000/user/trigger-update',
+
+  BRIDGE_ACCESS_TOKEN_URL:
+    EXTENSION_ENV.BRIDGE_ACCESS_TOKEN_URL ||
+    `${EXTENSION_ENV.API_BASE_URL || 'http://localhost:3000/api'}/auth/bridge-access-token`,
 };
 
 

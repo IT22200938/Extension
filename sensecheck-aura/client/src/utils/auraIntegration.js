@@ -1,8 +1,10 @@
 // AURA Integration for Sensecheck Game
 // This file enables sensecheck to work with AURA's backend and user system
 
-// Message types for extension ↔ web page bridge
+// Message types for extension ↔ web page bridge (v2: no session token in PONG; use bridgeRequest)
 const AURA_PING_TIMEOUT_MS = 1000;
+const AURA_BRIDGE_VERSION = 2;
+const AURA_BRIDGE_TIMEOUT_MS = 8000;
 
 class AuraIntegration {
   constructor() {
@@ -21,7 +23,59 @@ class AuraIntegration {
     this.initialize();
     this.setupExtensionListener();
   }
-  
+
+  /**
+   * v2 RPC: extension background performs auth; page receives only short-lived bridge JWT or data.
+   */
+  bridgeRequest(op, payload = {}) {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined') {
+        resolve({ ok: false, error: 'NO_WINDOW', message: 'No window' });
+        return;
+      }
+      const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', handler);
+        resolve({ ok: false, error: 'TIMEOUT', message: 'Bridge request timed out' });
+      }, AURA_BRIDGE_TIMEOUT_MS);
+      const handler = (event) => {
+        if (event.source !== window) return;
+        const d = event.data;
+        if (d?.type !== 'AURA_BRIDGE_RESPONSE' || d?.source !== 'aura-extension') return;
+        if (d.requestId !== requestId) return;
+        clearTimeout(timeout);
+        window.removeEventListener('message', handler);
+        if (d.ok) resolve({ ok: true, data: d.data });
+        else resolve({ ok: false, error: d.error, message: d.message });
+      };
+      window.addEventListener('message', handler);
+      window.postMessage(
+        {
+          type: 'AURA_BRIDGE_REQUEST',
+          version: AURA_BRIDGE_VERSION,
+          requestId,
+          op,
+          payload,
+        },
+        '*'
+      );
+    });
+  }
+
+  /** Short-lived JWT for Authorization header (minted by AURA API using extension session). */
+  async fetchBridgeAccessToken() {
+    const r = await this.bridgeRequest('getBridgeAccessToken', {});
+    if (!r.ok) return null;
+    return r.data?.token ?? null;
+  }
+
+  /** Hydrate userId from /auth/me via extension when possible. */
+  async fetchSessionUserId() {
+    const r = await this.bridgeRequest('getSession', {});
+    if (!r.ok || !r.data?.user) return null;
+    return r.data.user._id || r.data.user.id || null;
+  }
+
   /** Listen for extension PONG and user updates (login/logout from extension) */
   setupExtensionListener() {
     if (typeof window === 'undefined') return;
@@ -31,27 +85,16 @@ class AuraIntegration {
       if (!data || data.source !== 'aura-extension') return;
       if (data.type === 'AURA_EXT_PONG') {
         this.extensionPresent = data.extensionPresent === true;
-        if (data.loggedIn && data.token) {
-          this.token = data.token;
-          // userId not broadcast; use token for API calls
-          if (!this.isAuraMode) {
-            console.log('🔗 AURA extension detected with logged-in user');
-          }
-        }
-      } else if (data.type === 'AURA_EXT_TOKEN_PONG') {
-        if (data.token) {
-          this.token = data.token;
-          this.extensionPresent = true;
-          if (!this.isAuraMode) {
-            console.log('🔗 AURA token received (from extension)');
-          }
+        if (data.loggedIn && !this.isAuraMode) {
+          console.log('🔗 AURA extension detected with logged-in user (use bridge for token)');
+          this.hydrateFromExtensionBridge().catch(() => {});
         }
       } else if (data.type === 'AURA_USER_UPDATE') {
-        if (data.loggedIn && data.token) {
-          this.token = data.token;
+        if (data.loggedIn) {
           this.extensionPresent = true;
-          // userId not broadcast; use token for API calls
+          this.userId = data.userId || this.userId;
           console.log('🔗 AURA user logged in (from extension)');
+          this.hydrateFromExtensionBridge().catch(() => {});
         } else {
           this.userId = null;
           this.token = null;
@@ -60,6 +103,14 @@ class AuraIntegration {
         }
       }
     });
+  }
+
+  /** Load short-lived token + userId from extension bridge (v2). */
+  async hydrateFromExtensionBridge() {
+    const uid = await this.fetchSessionUserId();
+    if (uid) this.userId = uid;
+    const tok = await this.fetchBridgeAccessToken();
+    if (tok) this.token = tok;
   }
   
   /**
@@ -71,19 +122,31 @@ class AuraIntegration {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         window.removeEventListener('message', handler);
-        resolve({ present: false, loggedIn: false, user: null });
+        resolve({ present: false, loggedIn: false, capabilities: null });
       }, AURA_PING_TIMEOUT_MS);
       const handler = (event) => {
         if (event.source !== window) return;
         if (event.data?.type === 'AURA_EXT_PONG' && event.data?.source === 'aura-extension') {
           clearTimeout(timeout);
           window.removeEventListener('message', handler);
-          resolve({
-            present: event.data.extensionPresent === true,
-            loggedIn: event.data.loggedIn === true,
-            token: event.data.token ?? null,
-            user: event.data.user ?? null,
-          });
+          const present = event.data.extensionPresent === true;
+          const loggedIn = event.data.loggedIn === true;
+          const capabilities = event.data.capabilities ?? null;
+          const done = (extra) => resolve({ present, loggedIn, capabilities, ...extra });
+          if (!present || !loggedIn) {
+            done({});
+            return;
+          }
+          (async () => {
+            const sess = await this.bridgeRequest('getSession', {});
+            if (sess.ok && sess.data?.user) {
+              const id = sess.data.user._id || sess.data.user.id;
+              if (id) this.userId = this.userId || id;
+            }
+            const tok = await this.fetchBridgeAccessToken();
+            if (tok) this.token = tok;
+            done({ userId: this.userId || null, token: this.token || null });
+          })();
         }
       };
       window.addEventListener('message', handler);
@@ -97,26 +160,12 @@ class AuraIntegration {
   }
 
   /**
-   * Token-only ping-pong: request just the auth token from the extension.
-   * Returns { token: string | null }. Resolves with token: null if no PONG within timeout.
+   * Short-lived JWT from extension session (replaces AURA_EXT_TOKEN_PING).
+   * Returns { token: string | null }.
    */
-  checkToken() {
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        window.removeEventListener('message', handler);
-        resolve({ token: null });
-      }, AURA_PING_TIMEOUT_MS);
-      const handler = (event) => {
-        if (event.source !== window) return;
-        if (event.data?.type === 'AURA_EXT_TOKEN_PONG' && event.data?.source === 'aura-extension') {
-          clearTimeout(timeout);
-          window.removeEventListener('message', handler);
-          resolve({ token: event.data.token ?? null });
-        }
-      };
-      window.addEventListener('message', handler);
-      window.postMessage({ type: 'AURA_EXT_TOKEN_PING', source: 'aura-web' }, '*');
-    });
+  async checkToken() {
+    const token = await this.fetchBridgeAccessToken();
+    return { token };
   }
   
   initialize() {
@@ -350,17 +399,20 @@ class AuraIntegration {
     
     const result = await this.callAuraAPI('complete', {});
     
-    // Notify extension (if opened from extension)
-    if (window.opener) {
-      window.opener.postMessage({
-        type: 'AURA_ONBOARDING_COMPLETE',
-        overallScore: result.overallScore,
-      }, '*');
-    }
-    
-    // Also post to window so content script (on same page) can relay to extension background
-    window.postMessage({ type: 'AURA_ONBOARDING_COMPLETE', overallScore: result?.overallScore }, '*');
-    
+    const bridgeComplete = () => {
+      const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      const msg = {
+        type: 'AURA_BRIDGE_REQUEST',
+        version: AURA_BRIDGE_VERSION,
+        requestId,
+        op: 'completeOnboarding',
+        payload: { overallScore: result?.overallScore },
+      };
+      if (window.opener) window.opener.postMessage(msg, '*');
+      window.postMessage(msg, '*');
+    };
+    bridgeComplete();
+
     return result;
   }
 
@@ -407,8 +459,16 @@ class AuraIntegration {
   // Notify extension that onboarding is complete (user closes tab manually)
   redirectToExtension() {
     if (window.opener) {
-      window.opener.postMessage({ type: 'AURA_ONBOARDING_COMPLETE' }, '*');
-      // User closes tab manually – no auto-close
+      window.opener.postMessage(
+        {
+          type: 'AURA_BRIDGE_REQUEST',
+          version: AURA_BRIDGE_VERSION,
+          requestId: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          op: 'completeOnboarding',
+          payload: {},
+        },
+        '*'
+      );
     } else {
       alert('Onboarding completed! You can now close this tab and return to the AURA extension.');
     }

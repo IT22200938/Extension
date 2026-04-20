@@ -732,13 +732,12 @@ elementClass: safeClassString(target),
       trackingConfig = { ...trackingConfig, ...message.config };
       sendResponse({ success: true });
     } else if (message.type === 'USER_LOGGED_IN') {
-      // Broadcast token (not userId) to web page so other components can make API calls
-      // isRegistration: true = onboarding just completed; isLogin: true = user logged in
+      // No session token in page context (v2). Embedders use AURA_BRIDGE_REQUEST (getBridgeAccessToken / getSession).
       const src = message.source || 'login';
       window.postMessage({
         type: 'AURA_USER_UPDATE',
         source: 'aura-extension',
-        token: message.token,
+        bridgeVersion: 2,
         userId: message.userId || null,
         user: message.user,
         loggedIn: true,
@@ -751,8 +750,9 @@ elementClass: safeClassString(target),
       window.postMessage({
         type: 'AURA_USER_UPDATE',
         source: 'aura-extension',
-        token: null,
+        bridgeVersion: 2,
         user: null,
+        userId: null,
         loggedIn: false,
       }, '*');
       sendResponse({ success: true });
@@ -769,217 +769,90 @@ elementClass: safeClassString(target),
     return true; // Keep message channel open for async response
   });
 
-  // ========== AURA PING-PONG: Extension presence detection ==========
-  // Web pages (React app, dashboard, etc.) send AURA_EXT_PING to detect if extension is installed.
-  // Content script responds with AURA_EXT_PONG including token and user details if logged in.
+  const AURA_BRIDGE_VERSION = 2;
+  const AURA_BRIDGE_CAPABILITIES = [
+    'getSession',
+    'getBridgeAccessToken',
+    'getMlPersonalizedProfile',
+    'getAdaptiveProfile',
+    'getMlFinalProfile',
+    'setAdaptiveProfile',
+    'completeOnboarding',
+  ];
+
+  // ========== AURA_EXT_PING: presence + bridge v2 capabilities (no secrets) ==========
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     if (event.data?.type !== 'AURA_EXT_PING') return;
 
     (async () => {
       try {
-        const result = await chrome.storage.local.get([
-          'userId', 'authToken', 'userProfile', 'trackingEnabled', 'consentGiven'
-        ]);
+        const result = await chrome.storage.local.get(['userId', 'authToken']);
         const hasUser = !!(result.authToken && result.userId);
 
         sendBridgePong(event, {
           type: 'AURA_EXT_PONG',
           source: 'aura-extension',
+          bridgeVersion: AURA_BRIDGE_VERSION,
           extensionPresent: true,
           loggedIn: hasUser,
-          userId: hasUser ? result.userId : null,
-          token: hasUser ? result.authToken : null,
-          user: hasUser ? {
-            email: result.userProfile?.email ?? null,
-            name: result.userProfile?.name ?? null,
-          } : null,
+          capabilities: AURA_BRIDGE_CAPABILITIES,
         });
       } catch (err) {
         sendBridgePong(event, {
           type: 'AURA_EXT_PONG',
           source: 'aura-extension',
+          bridgeVersion: AURA_BRIDGE_VERSION,
           extensionPresent: true,
           loggedIn: false,
-          token: null,
-          user: null,
+          capabilities: AURA_BRIDGE_CAPABILITIES,
           error: err.message,
         });
       }
     })();
   });
 
-  // ========== AURA ONBOARDING COMPLETE: Relay to background ==========
-  // Sensecheck posts AURA_ONBOARDING_COMPLETE when game finishes; relay so
-  // extension can enable aggregated/global tracking.
+  // ========== AURA_BRIDGE_REQUEST (v2): RPC → background, reply via AURA_BRIDGE_RESPONSE ==========
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
-    if (event.data?.type !== 'AURA_ONBOARDING_COMPLETE') return;
-    chrome.runtime.sendMessage({ type: 'ONBOARDING_COMPLETE' }).catch(() => {});
-  });
-
-  // ========== AURA TOKEN PING-PONG: Token-only exchange ==========
-  // Separate ping-pong for components that only need the auth token.
-  // Send AURA_EXT_TOKEN_PING, receive AURA_EXT_TOKEN_PONG with { token }.
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    if (event.data?.type !== 'AURA_EXT_TOKEN_PING') return;
-
-    (async () => {
-      try {
-        const result = await chrome.storage.local.get(['authToken', 'userId']);
-        const hasToken = !!(result.authToken && result.userId);
-
-        sendBridgePong(event, {
-          type: 'AURA_EXT_TOKEN_PONG',
-          source: 'aura-extension',
-          token: hasToken ? result.authToken : null,
-        });
-      } catch (err) {
-        sendBridgePong(event, {
-          type: 'AURA_EXT_TOKEN_PONG',
-          source: 'aura-extension',
-          token: null,
-          error: err.message,
-        });
-      }
-    })();
-  });
-
-
-  // ========== AURA_EXT_SET_ADAPTIVE_PROFILE: Forward to background for authoritative auth check ==========
-  // Background is source of truth for logout state; content script storage can lag after logout.
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    if (event.data?.type !== 'AURA_EXT_SET_ADAPTIVE_PROFILE') return;
-    const profile = event.data?.profile;
-    if (!profile || typeof profile !== 'object') return;
+    if (event.data?.type !== 'AURA_BRIDGE_REQUEST') return;
+    if (event.data?.version !== AURA_BRIDGE_VERSION) return;
+    const requestId = event.data.requestId;
+    const op = event.data.op;
+    if (requestId === undefined || requestId === null || !op) return;
 
     chrome.runtime.sendMessage(
-      { type: 'SET_ADAPTIVE_PROFILE_REQUEST', profile },
+      {
+        type: 'AURA_BRIDGE_REQUEST',
+        requestId,
+        op,
+        payload: event.data.payload && typeof event.data.payload === 'object' ? event.data.payload : {},
+      },
       (response) => {
         if (chrome.runtime.lastError) {
           sendBridgePong(event, {
-            type: 'AURA_EXT_SET_ADAPTIVE_PROFILE_ACK',
+            type: 'AURA_BRIDGE_RESPONSE',
             source: 'aura-extension',
-            success: false,
-            error: chrome.runtime.lastError.message || 'Extension error',
+            version: AURA_BRIDGE_VERSION,
+            requestId,
+            ok: false,
+            error: 'EXTENSION_ERROR',
+            message: chrome.runtime.lastError.message || 'Extension error',
           });
           return;
         }
         sendBridgePong(event, {
-          type: 'AURA_EXT_SET_ADAPTIVE_PROFILE_ACK',
+          type: 'AURA_BRIDGE_RESPONSE',
           source: 'aura-extension',
-          success: response?.success ?? false,
-          error: response?.error,
+          version: AURA_BRIDGE_VERSION,
+          requestId: response?.requestId ?? requestId,
+          ok: response?.ok === true,
+          data: response?.ok ? response.data : undefined,
+          error: response?.ok ? undefined : response?.error,
+          message: response?.ok ? undefined : response?.message,
         });
       }
     );
-  });
-
-  // ========== AURA_EXT_ML_PERSONALIZED_PROFILE_PING: Return personalized profile ==========
-  // Ping → PONG with { profile, available }. Only when user is logged in.
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    if (event.data?.type !== 'AURA_EXT_ML_PERSONALIZED_PROFILE_PING') return;
-
-    (async () => {
-      try {
-        const result = await chrome.storage.local.get(['AURA_EXT_ML_PERSONALIZED_PROFILE', 'authToken', 'userId']);
-        const loggedIn = !!(result.authToken && result.userId);
-        const profile = loggedIn ? (result.AURA_EXT_ML_PERSONALIZED_PROFILE ?? null) : null;
-        const available = loggedIn && !!profile;
-
-        sendBridgePong(event, {
-          type: 'AURA_EXT_ML_PERSONALIZED_PROFILE_PONG',
-          source: 'aura-extension',
-          profile,
-          available,
-        });
-      } catch (err) {
-        sendBridgePong(event, {
-          type: 'AURA_EXT_ML_PERSONALIZED_PROFILE_PONG',
-          source: 'aura-extension',
-          profile: null,
-          available: false,
-          error: err.message,
-        });
-      }
-    })();
-  });
-
-  // ========== AURA_EXT_ADAPTIVE_PROFILE_PING: Return adaptive optimized profile ==========
-  // Ping → PONG with { profile, available }. Only when user is logged in.
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    if (event.data?.type !== 'AURA_EXT_ADAPTIVE_PROFILE_PING') return;
-
-    (async () => {
-      try {
-        const result = await chrome.storage.local.get(['AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE', 'authToken', 'userId']);
-        const loggedIn = !!(result.authToken && result.userId);
-        const profile = loggedIn ? (result.AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE ?? null) : null;
-        const available = loggedIn && !!profile;
-
-        sendBridgePong(event, {
-          type: 'AURA_EXT_ADAPTIVE_PROFILE_PONG',
-          source: 'aura-extension',
-          profile,
-          available,
-        });
-      } catch (err) {
-        sendBridgePong(event, {
-          type: 'AURA_EXT_ADAPTIVE_PROFILE_PONG',
-          source: 'aura-extension',
-          profile: null,
-          available: false,
-          error: err.message,
-        });
-      }
-    })();
-  });
-
-  // ========== AURA_EXT_ML_FINAL_PROFILE_PING: Adaptive if exists, else personalized ==========
-  // Ping → PONG with { profile, source: 'adaptive'|'personalized', available }. Only when user is logged in.
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    if (event.data?.type !== 'AURA_EXT_ML_FINAL_PROFILE_PING') return;
-
-    (async () => {
-      try {
-        const result = await chrome.storage.local.get([
-          'AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE',
-          'AURA_EXT_ML_PERSONALIZED_PROFILE',
-          'authToken',
-          'userId',
-        ]);
-        const loggedIn = !!(result.authToken && result.userId);
-        const adaptive = loggedIn ? (result.AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE ?? null) : null;
-        const personalized = loggedIn ? (result.AURA_EXT_ML_PERSONALIZED_PROFILE ?? null) : null;
-
-        const hasAdaptive = !!adaptive;
-        const profile = hasAdaptive ? adaptive : personalized;
-        const source = hasAdaptive ? 'adaptive' : 'personalized';
-        const available = loggedIn && !!profile;
-
-        sendBridgePong(event, {
-          type: 'AURA_EXT_ML_FINAL_PROFILE_PONG',
-          source: 'aura-extension',
-          profile,
-          sourceType: source,
-          available,
-        });
-      } catch (err) {
-        sendBridgePong(event, {
-          type: 'AURA_EXT_ML_FINAL_PROFILE_PONG',
-          source: 'aura-extension',
-          profile: null,
-          sourceType: null,
-          available: false,
-          error: err.message,
-        });
-      }
-    })();
   });
 
   // Initialize when script loads

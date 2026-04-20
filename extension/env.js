@@ -18,7 +18,7 @@
 
   function unique(items) {
     return Array.from(new Set((items || []).filter(Boolean)));
-  }
+  }                                                                                                                                                                                 
 
   // API host permissions are centralized here and synced into manifest.json by build scripts.
   const HOST_PERMISSIONS = unique([
@@ -41,12 +41,17 @@
     'http://127.0.0.1:8080',
   ]);
 
+  // Short-lived JWT for embedder pages (minted by main API using the extension session).
+  // Backend: POST JSON body optional { scopes?: string[] }; response { token, expiresIn } (seconds).
+  const BRIDGE_ACCESS_TOKEN_URL = `${API_BASE_URL}/auth/bridge-access-token`;
+
   const URL_ENV = {
     API_BASE_URL,
     ONBOARDING_GAME_URL: ONBOARDING_GAME_BASE_URL,
     ML_PROFILE_API_URL: `${ML_BASE_URL}/data/current-profile`,
     IMPAIRMENT_TO_ML_PROFILE_API_URL: `${ML_BASE_URL}/category/generate-profile`,
     ML_SESSION_FEEDBACK_URL: `${ML_BASE_URL}/user/trigger-update`,
+    BRIDGE_ACCESS_TOKEN_URL,
     HOST_PERMISSIONS,
     BRIDGE_TRUSTED_ORIGINS,
   };

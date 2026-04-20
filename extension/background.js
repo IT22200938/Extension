@@ -1,4 +1,4 @@
-﻿// Background Service Worker - Processes and stores interaction data
+// Background Service Worker - Processes and stores interaction data
 // Handles data from content scripts and manages storage
 
 // Import config and aggregator as ES modules
@@ -12,6 +12,151 @@ if (typeof globalThis !== 'undefined') {
 
 const MAX_INTERACTIONS_STORED = 1000; // Limit stored interactions
 const EXPORT_BATCH_SIZE = 100;
+
+/** v2 page bridge: fixed ops only (see AURA_BRIDGE_REQUEST). */
+const BRIDGE_CAPABILITIES = [
+  'getSession',
+  'getBridgeAccessToken',
+  'getMlPersonalizedProfile',
+  'getAdaptiveProfile',
+  'getMlFinalProfile',
+  'setAdaptiveProfile',
+  'completeOnboarding',
+];
+
+async function runOnboardingCompleteFlow() {
+  console.log('[AURA Background] Onboarding completed; impairment profile saved');
+  await chrome.storage.local.remove('onboardingTabId');
+  await chrome.storage.local.set({ onboardingCompleted: true });
+  console.log('[AURA Background] Onboarding completed; aggregated tracking enabled');
+  fetchInitialMlProfileFromImpairment();
+  const result = await chrome.storage.local.get(['authToken', 'userId', 'userProfile']);
+  if (result.authToken && result.userId) {
+    broadcastToAllTabs({
+      type: 'USER_LOGGED_IN',
+      token: result.authToken,
+      userId: result.userId,
+      user: result.userProfile ? { email: result.userProfile.email, name: result.userProfile.name } : null,
+      onboardingComplete: true,
+      source: 'registration',
+    });
+  }
+}
+
+async function applyAdaptiveProfileAndBroadcast(profile, sourceTag) {
+  await chrome.storage.local.set({ AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE: profile });
+  broadcastToAllTabs({
+    type: 'AURA_EXT_PROFILE_CHANGED',
+    profile,
+    source: sourceTag || 'adaptive-update',
+  });
+}
+
+async function handleBridgeOp(op, payload, _sender) {
+  if (!BRIDGE_CAPABILITIES.includes(op)) {
+    return { ok: false, error: 'FORBIDDEN_OP', message: String(op) };
+  }
+
+  const auth = await chrome.storage.local.get(['authToken', 'userId']);
+  const authed = !!(
+    auth.authToken &&
+    auth.userId &&
+    String(auth.authToken).trim() !== '' &&
+    String(auth.userId).trim() !== ''
+  );
+  if (!authed) {
+    return { ok: false, error: 'AUTH_REQUIRED', message: 'Not logged in' };
+  }
+
+  if (op === 'getSession') {
+    const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.ME}`, {
+      headers: { Authorization: `Bearer ${auth.authToken}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: 'SERVER_ERROR',
+        message: body.error || body.message || `HTTP ${res.status}`,
+      };
+    }
+    return { ok: true, data: body };
+  }
+
+  if (op === 'getBridgeAccessToken') {
+    const url = API_CONFIG.BRIDGE_ACCESS_TOKEN_URL;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.authToken}`,
+      },
+      body: JSON.stringify(
+        payload && Array.isArray(payload.scopes) ? { scopes: payload.scopes } : {}
+      ),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const errMsg = body.error || body.message || `HTTP ${res.status}`;
+      if (res.status === 404 || res.status === 501) {
+        return { ok: false, error: 'BRIDGE_TOKEN_UNAVAILABLE', message: errMsg };
+      }
+      return { ok: false, error: 'SERVER_ERROR', message: errMsg };
+    }
+    if (!body.token || typeof body.token !== 'string') {
+      return { ok: false, error: 'SERVER_ERROR', message: 'Invalid bridge token response' };
+    }
+    return {
+      ok: true,
+      data: {
+        token: body.token,
+        expiresIn: body.expiresIn ?? body.expires_in ?? null,
+      },
+    };
+  }
+
+  if (op === 'getMlPersonalizedProfile') {
+    const stored = await chrome.storage.local.get(['AURA_EXT_ML_PERSONALIZED_PROFILE']);
+    const profile = stored.AURA_EXT_ML_PERSONALIZED_PROFILE ?? null;
+    return { ok: true, data: { profile, available: !!(profile && typeof profile === 'object') } };
+  }
+
+  if (op === 'getAdaptiveProfile') {
+    const stored = await chrome.storage.local.get(['AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE']);
+    const profile = stored.AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE ?? null;
+    return { ok: true, data: { profile, available: !!(profile && typeof profile === 'object') } };
+  }
+
+  if (op === 'getMlFinalProfile') {
+    const stored = await chrome.storage.local.get([
+      'AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE',
+      'AURA_EXT_ML_PERSONALIZED_PROFILE',
+    ]);
+    const adaptive = stored.AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE ?? null;
+    const personalized = stored.AURA_EXT_ML_PERSONALIZED_PROFILE ?? null;
+    const hasAdaptive = !!(adaptive && typeof adaptive === 'object');
+    const profile = hasAdaptive ? adaptive : personalized;
+    const sourceType = hasAdaptive ? 'adaptive' : 'personalized';
+    const available = !!(profile && typeof profile === 'object');
+    return { ok: true, data: { profile, sourceType, available } };
+  }
+
+  if (op === 'setAdaptiveProfile') {
+    const profile = payload?.profile;
+    if (!profile || typeof profile !== 'object') {
+      return { ok: false, error: 'VALIDATION_ERROR', message: 'Invalid profile' };
+    }
+    await applyAdaptiveProfileAndBroadcast(profile, payload?.source || 'adaptive-update');
+    return { ok: true, data: { success: true } };
+  }
+
+  if (op === 'completeOnboarding') {
+    await runOnboardingCompleteFlow();
+    return { ok: true, data: { success: true } };
+  }
+
+  return { ok: false, error: 'FORBIDDEN_OP', message: op };
+}
 
 // Initialize extension
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -457,31 +602,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   
+  // v2 bridge RPC from content scripts (opaque page → content → background)
+  if (message.type === 'AURA_BRIDGE_REQUEST') {
+    const requestId = message.requestId;
+    handleBridgeOp(message.op, message.payload ?? {}, sender)
+      .then((r) => sendResponse({ requestId, ...r }))
+      .catch((err) =>
+        sendResponse({
+          requestId,
+          ok: false,
+          error: 'SERVER_ERROR',
+          message: err?.message || String(err),
+        })
+      );
+    return true;
+  }
+
   // Onboarding complete – impairment profile saved; enable tracking and broadcast user registered
   if (message.type === 'ONBOARDING_COMPLETE') {
-    console.log('[AURA Background] Onboarding completed; impairment profile saved');
-    chrome.storage.local.remove('onboardingTabId');
-    chrome.storage.local.set({ onboardingCompleted: true }).then(() => {
-      console.log('[AURA Background] Onboarding completed; aggregated tracking enabled');
-    });
-    // Fetch initial ML profile from impairment (POST impairment to separate API, save response.profile)
-    fetchInitialMlProfileFromImpairment();
-    // Broadcast user registered (impairment profile created) so tabs can refresh ML profile, etc.
-    chrome.storage.local.get(['authToken', 'userId', 'userProfile']).then((result) => {
-      if (result.authToken && result.userId) {
-        broadcastToAllTabs({
-          type: 'USER_LOGGED_IN',
-          token: result.authToken,
-          userId: result.userId,
-          user: result.userProfile ? { email: result.userProfile.email, name: result.userProfile.name } : null,
-          onboardingComplete: true,
-          source: 'registration',
-        });
-      }
-    });
-    // Do not auto-close tab – user closes it manually
-    sendResponse({ success: true });
-    return false;
+    runOnboardingCompleteFlow()
+      .then(() => sendResponse({ success: true }))
+      .catch((err) => sendResponse({ success: false, error: err?.message }));
+    return true;
   }
   
   // Page unload sync (removed – global interactions deprecated)
@@ -564,16 +706,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: 'User must be logged in' });
         return;
       }
-      chrome.storage.local.set({ AURA_EXT_ADAPTIVE_OPTIMIZED_PROFILE: profile })
-        .then(() => {
-          // Broadcast to ALL tabs so every open page picks up the updated profile
-          broadcastToAllTabs({
-            type: 'AURA_EXT_PROFILE_CHANGED',
-            profile,
-            source: message.source || 'adaptive-update'
-          });
-          sendResponse({ success: true });
-        })
+      applyAdaptiveProfileAndBroadcast(profile, message.source || 'adaptive-update')
+        .then(() => sendResponse({ success: true }))
         .catch((err) => sendResponse({ success: false, error: err?.message || 'Storage failed' }));
     });
     return true;

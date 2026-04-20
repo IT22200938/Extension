@@ -109,6 +109,27 @@ router.post('/login', [
   }
 });
 
+// Short-lived JWT for embedders (extension mediates; page never sees the 30d session token).
+router.post('/bridge-access-token', authMiddleware, async (req, res) => {
+  try {
+    const ttlSec = Math.min(
+      parseInt(process.env.BRIDGE_JWT_TTL_SEC || '300', 10) || 300,
+      3600
+    );
+    const scopes = Array.isArray(req.body?.scopes) ? req.body.scopes : undefined;
+    const payload = {
+      userId: req.userId.toString(),
+      typ: 'bridge',
+    };
+    if (scopes && scopes.length) payload.scopes = scopes;
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: ttlSec });
+    res.json({ token, expiresIn: ttlSec });
+  } catch (error) {
+    console.error('Bridge token error:', error);
+    res.status(500).json({ error: 'Failed to issue bridge token' });
+  }
+});
+
 // Get current user
 router.get('/me', authMiddleware, async (req, res) => {
   try {
